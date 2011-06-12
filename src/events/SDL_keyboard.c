@@ -318,6 +318,37 @@ int SDL_KeyboardInit(void)
 	keynames[SDLK_EURO] = "euro";
 	keynames[SDLK_UNDO] = "undo";
 
+#ifdef _WIN32_WCE
+	/* Name the CE keys with their special names */
+	keynames[SDLK_F1] = "softkey A";
+	keynames[SDLK_F2] = "softkey B";
+	keynames[SDLK_F3] = "talk/call";
+	keynames[SDLK_F4] = "end call";
+	keynames[SDLK_F6] = "volume up";
+	keynames[SDLK_F7] = "volume down";
+	keynames[SDLK_F8] = "star";
+	keynames[SDLK_F9] = "pound";
+	keynames[SDLK_F10] = "record";
+	keynames[SDLK_F11] = "symbol";
+	keynames[SDLK_F16] = "speaker";
+	keynames[SDLK_F17] = "flip";
+	keynames[SDLK_F18] = "power";
+	keynames[SDLK_F19] = "red key";
+	keynames[SDLK_F20] = "rocker";
+	keynames[SDLK_F21] = "dpad";
+	keynames[SDLK_F22] = "f22";
+	keynames[SDLK_F23] = "rocker action";
+	keynames[SDLK_F24] = "f24";
+	keynames[SDLK_APP1] = "application 1";
+	keynames[SDLK_APP2] = "application 2";
+	keynames[SDLK_APP3] = "application 3";
+	keynames[SDLK_APP4] = "application 4";
+	keynames[SDLK_APP5] = "application 5";
+	keynames[SDLK_APP6] = "application 6";
+	keynames[SDLK_LSUPER] = "home";
+	keynames[SDLK_ESCAPE] = "back";
+	keynames[SDLK_RETURN] = "action";
+#endif
 	/* Done.  Whew. */
 	return(0);
 }

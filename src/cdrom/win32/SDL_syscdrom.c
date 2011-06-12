@@ -30,11 +30,29 @@ static char rcsid =
 #include <stdlib.h>
 #include <stdio.h>
 #include <windows.h>
+#ifndef _WIN32_WCE
 #include <mmsystem.h>
+#endif
 
 #include "SDL_error.h"
 #include "SDL_cdrom.h"
+
+#ifdef _WIN32_WCE
+
+int SDL_SYS_CDInit() {
+	return 0;
+}
+
+static void SDL_SYS_CDClose(SDL_CD *cdrom) {
+}
+
+void SDL_SYS_CDQuit(void) {
+}
+
+#else
+
 #include "SDL_syscdrom.h"
+
 
 /* This really broken?? */
 #define BROKEN_MCI_PAUSE	/* Pausing actually stops play -- Doh! */
@@ -387,3 +405,5 @@ void SDL_SYS_CDQuit(void)
 		SDL_numcds = 0;
 	}
 }
+
+#endif

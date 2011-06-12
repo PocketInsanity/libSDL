@@ -141,6 +141,9 @@ typedef struct SDL_Surface {
 #define SDL_RLEACCEL	0x00004000	/* Surface is RLE encoded */
 #define SDL_SRCALPHA	0x00010000	/* Blit uses source alpha blending */
 #define SDL_PREALLOC	0x01000000	/* Surface uses preallocated memory */
+#define SDL_PORTRTVIDEO	0x00100000	/* wince */
+#define SDL_LANDSCVIDEO	0x00200000	/* wince */
+#define SDL_INVLNDVIDEO	0x00400000	/* wince */
 
 /* Evaluates to true if the surface needs to be locked before access */
 #define SDL_MUSTLOCK(surface)	\
