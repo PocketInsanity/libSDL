@@ -13,46 +13,37 @@
 #include <malloc.h>			/* For _alloca() */
 
 #ifdef _WIN32_WCE
+
 # define DIR_SEPERATOR TEXT("\\")
-# define _getcwd(str,len)	wcscpy(str,DIR_SEPERATOR);
-# define setbuf(x)
-# define setvbuf(x)
+# define setbuf(x,y)
+# define setvbuf(x,y,z,w)
 # define fopen		_wfopen
 # define freopen	_wfreopen
 # define remove(x)	DeleteFile(x)
 # define strcat		wcscat
-#else
-# define DIR_SEPERATOR TEXT("/")
-# include <direct.h>
-#endif
-
-/* Include the SDL main definition header */
-#include "SDL.h"
-#include "SDL_main.h"
-
-#ifdef main
-# ifndef _WIN32_WCE_EMULATION
-#  undef main
-# endif /* _WIN32_WCE_EMULATION */
-#endif /* main */
-
 /* The standard output files */
-#define STDOUT_FILE	TEXT("stdout.txt")
-#define STDERR_FILE	TEXT("stderr.txt")
+# define STDOUT_FILE	TEXT("SDL_stdout.txt")
+# define STDERR_FILE	TEXT("SDL_stderr.txt")
 
-#ifndef NO_STDIO_REDIRECT
-# ifdef _WIN32_WCE
-  static wchar_t stdoutPath[MAX_PATH];
-  static wchar_t stderrPath[MAX_PATH];
-# else
-  static char stdoutPath[MAX_PATH];
-  static char stderrPath[MAX_PATH];
-# endif
-#endif
+TCHAR fileUnc[MAX_PATH+1];
+static TCHAR *_getcwd(TCHAR *buffer, int maxlen)
+{
+	TCHAR *plast;
 
-#if defined(_WIN32_WCE) && _WIN32_WCE < 300
+	GetModuleFileName(NULL, fileUnc, MAX_PATH);
+	plast = wcsrchr(fileUnc, TEXT('\\'));
+	if(plast) *plast = 0;
+	/* Special trick to keep start menu clean... */
+	if(_wcsicmp(fileUnc, TEXT("\\windows\\start menu")) == 0)
+		wcscpy(fileUnc, TEXT("\\Apps"));
+
+	if(buffer) wcsncpy(buffer, fileUnc, maxlen);
+	return fileUnc;
+}
+
+# if defined(_WIN32_WCE) && _WIN32_WCE < 300
 /* seems to be undefined in Win CE although in online help */
-#define isspace(a) (((CHAR)a == ' ') || ((CHAR)a == '\t'))
+# define isspace(a) (((CHAR)a == ' ') || ((CHAR)a == '\t'))
 
 /* seems to be undefined in Win CE although in online help */
 char *strrchr(char *str, int c)
@@ -74,7 +65,38 @@ char *strrchr(char *str, int c)
 	}
 	return p;
 }
-#endif /* _WIN32_WCE < 300 */
+# endif /* _WIN32_WCE < 300 */
+
+#else
+# define DIR_SEPERATOR TEXT("/")
+# include <direct.h>
+
+/* The standard output files */
+# define STDOUT_FILE	TEXT("stdout.txt")
+# define STDERR_FILE	TEXT("stderr.txt")
+
+#endif
+
+/* Include the SDL main definition header */
+#include "SDL.h"
+#include "SDL_main.h"
+
+#ifdef main
+# ifndef _WIN32_WCE_EMULATION
+#  undef main
+# endif /* _WIN32_WCE_EMULATION */
+#endif /* main */
+
+#ifndef NO_STDIO_REDIRECT
+# ifndef _WIN32_WCE
+  static char stdoutPath[MAX_PATH];
+  static char stderrPath[MAX_PATH];
+# else
+  static wchar_t stdoutPath[MAX_PATH];
+  static wchar_t stderrPath[MAX_PATH];
+# endif
+#endif
+
 
 /* Parse a command line buffer into arguments */
 static int ParseCommandLine(char *cmdline, char **argv)
@@ -159,7 +181,7 @@ static void __cdecl cleanup_output(void)
 #ifndef NO_STDIO_REDIRECT
 	/* See if the files have any output in them */
 	if ( stdoutPath[0] ) {
-		file = fopen(stdoutPath, TEXT("rb"));
+		file = (FILE *) fopen(stdoutPath, TEXT("rb"));
 		if ( file ) {
 			empty = (fgetc(file) == EOF) ? 1 : 0;
 			fclose(file);
@@ -169,7 +191,7 @@ static void __cdecl cleanup_output(void)
 		}
 	}
 	if ( stderrPath[0] ) {
-		file = fopen(stderrPath, TEXT("rb"));
+		file = (FILE *) fopen(stderrPath, TEXT("rb"));
 		if ( file ) {
 			empty = (fgetc(file) == EOF) ? 1 : 0;
 			fclose(file);
@@ -219,8 +241,11 @@ int console_main(int argc, char *argv[])
 		ShowError("WinMain() error", SDL_GetError());
 		return(FALSE);
 	}
+
+#if defined(_WIN32_WCE) && (!defined(GCC_BUILD) && !defined(__GNUC__))
 	atexit(cleanup_output);
 	atexit(SDL_Quit);
+#endif
 
 #ifndef DISABLE_VIDEO
 #if 0
@@ -248,6 +273,10 @@ int console_main(int argc, char *argv[])
 	SDL_main(argc, argv);
 
 	/* Exit cleanly, calling atexit() functions */
+#if defined(_WIN32_WCE) && defined(__GNUC__)
+	cleanup_output();
+	SDL_Quit();
+#endif
 	exit(0);
 
 	/* Hush little compiler, don't you cry... */
@@ -289,49 +318,49 @@ int WINAPI WinMain(HINSTANCE hInst, HINSTANCE hPrev, LPSTR szCmdLine, int sw)
 	strcat( stdoutPath, DIR_SEPERATOR STDOUT_FILE );
     
 	/* Redirect standard input and standard output */
-	newfp = freopen(stdoutPath, TEXT("w"), stdout);
+	newfp = (FILE *) freopen(stdoutPath, TEXT("w"), stdout);
 
-#ifndef _WIN32_WCE
 	if ( newfp == NULL ) {	/* This happens on NT */
 #if !defined(stdout)
 		stdout = fopen(stdoutPath, TEXT("w"));
 #else
-		newfp = fopen(stdoutPath, TEXT("w"));
+		newfp = (FILE *) fopen(stdoutPath, TEXT("w"));
 		if ( newfp ) {
 			*stdout = *newfp;
 		}
 #endif
 	}
-#endif /* _WIN32_WCE */
 
 	_getcwd( stderrPath, sizeof( stderrPath ) );
 	strcat( stderrPath, DIR_SEPERATOR STDERR_FILE );
 
-	newfp = freopen(stderrPath, TEXT("w"), stderr);
-#ifndef _WIN32_WCE
+	newfp = (FILE *) freopen(stderrPath, TEXT("w"), stderr);
 	if ( newfp == NULL ) {	/* This happens on NT */
 #if !defined(stderr)
 		stderr = fopen(stderrPath, TEXT("w"));
 #else
-		newfp = fopen(stderrPath, TEXT("w"));
+		newfp = (FILE *) fopen(stderrPath, TEXT("w"));
 		if ( newfp ) {
 			*stderr = *newfp;
 		}
 #endif
 	}
-#endif /* _WIN32_WCE */
 
 	setvbuf(stdout, NULL, _IOLBF, BUFSIZ);	/* Line buffered */
 	setbuf(stderr, NULL);			/* No buffering */
 #endif /* !NO_STDIO_REDIRECT */
 
 #ifdef _WIN32_WCE
-	nLen = wcslen(szCmdLine)+128+1;
-	bufp = (wchar_t *)alloca(nLen*2);
-	wcscpy (bufp, TEXT("\""));
-	GetModuleFileName(NULL, bufp+1, 128-3);
-	wcscpy (bufp+wcslen(bufp), TEXT("\" "));
-	wcsncpy(bufp+wcslen(bufp), szCmdLine,nLen-wcslen(bufp));
+	if (wcsncmp(szCmdLine, TEXT("\\"), 1)) {
+		nLen = wcslen(szCmdLine)+128+1;
+		bufp = (wchar_t *)alloca(nLen*2);
+		wcscpy (bufp, TEXT("\""));
+		GetModuleFileName(NULL, bufp+1, 128-3);
+		wcscpy (bufp+wcslen(bufp), TEXT("\" "));
+		wcsncpy(bufp+wcslen(bufp), szCmdLine,nLen-wcslen(bufp));
+	} else
+		bufp = szCmdLine;
+
 	nLen = wcslen(bufp)+1;
 	cmdline = (char *)alloca(nLen);
 	if ( cmdline == NULL ) {
@@ -355,6 +384,16 @@ int WINAPI WinMain(HINSTANCE hInst, HINSTANCE hPrev, LPSTR szCmdLine, int sw)
 		return OutOfMemory();
 	}
 	ParseCommandLine(cmdline, argv);
+
+	/* fix gdb/emulator combo */
+	while (argc > 1 && !strstr(argv[0], ".exe")) {
+		OutputDebugString(TEXT("SDL: gdb argv[0] fixup\n"));
+		*(argv[1]-1) = ' ';
+		int i;
+		for (i=1; i<argc; i++)
+			argv[i] = argv[i+1];
+		argc--;
+	}
 
 	/* Run the main program (after a little SDL initialization) */
 	return(console_main(argc, argv));

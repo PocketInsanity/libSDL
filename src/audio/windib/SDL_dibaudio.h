@@ -41,6 +41,7 @@ struct SDL_PrivateAudioData {
 	Uint8 *mixbuf;		/* The raw allocated mixing buffer */
 	WAVEHDR wavebuf[NUM_BUFFERS];	/* Wave audio fragments */
 	int next_buffer;
+	Uint8 thread_priority; /* Thread priority */
 };
 
 /* Old variable names */

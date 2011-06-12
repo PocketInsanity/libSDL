@@ -36,6 +36,39 @@ static char rcsid =
 #include "SDL_joystick_c.h"
 
 #include <windows.h>
+
+#ifdef _WIN32_WCE
+
+int SDL_SYS_JoystickInit(void)
+{
+	return 0;
+}
+
+void SDL_SYS_JoystickClose(SDL_Joystick *joystick) 
+{
+}
+
+const char *SDL_SYS_JoystickName(int index)
+{
+	return NULL;
+}
+
+int SDL_SYS_JoystickOpen(SDL_Joystick *joystick)
+{
+	return 0;
+}
+
+void SDL_SYS_JoystickQuit(void)
+{
+	return;
+}
+
+void SDL_SYS_JoystickUpdate(SDL_Joystick *joystick)
+{
+}
+
+#else
+
 #include <mmsystem.h>
 
 #define MAX_JOYSTICKS	16
@@ -336,3 +369,5 @@ void SetMMerror(char *function, int code)
 	}
 	SDL_SetError("%s", errbuf);
 }
+
+#endif
