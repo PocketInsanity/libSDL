@@ -236,6 +236,12 @@ static LONG getDisplayMode(void)
 	devMode.dmFields = DM_DISPLAYORIENTATION;
 
 	r = dynChangeDisplaySettingsEx(NULL, &devMode, NULL, CDS_TEST, NULL);
+	if (devMode.dmDisplayOrientation != 0)
+	{
+		devMode.dmDisplayOrientation = 0;
+		dynChangeDisplaySettingsEx(NULL, &devMode, NULL, CDS_RESET, NULL);
+		debugLog("SDL: Forced Portrait orientation");
+	}
 	debugLog("SDL: orientation %d", devMode.dmDisplayOrientation);
 	return devMode.dmDisplayOrientation;
 }
