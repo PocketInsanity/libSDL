@@ -81,6 +81,9 @@ static VideoBootStrap *bootstrap[] = {
 #ifdef ENABLE_DIRECTX
 	&DIRECTX_bootstrap,
 #endif
+#ifdef ENABLE_WINGAPI
+	&WINGAPI_bootstrap,
+#endif
 #ifdef ENABLE_WINDIB
 	&WINDIB_bootstrap,
 #endif
@@ -881,6 +884,7 @@ SDL_Surface * SDL_SetVideoMode (int width, int height, int bpp, Uint32 flags)
 				(SDL_VideoSurface->flags&SDL_HWSURFACE) &&
 				!(SDL_VideoSurface->flags&SDL_DOUBLEBUF))
 	     ) ) {
+
 		SDL_CreateShadowSurface(bpp);
 		if ( SDL_ShadowSurface == NULL ) {
 			SDL_SetError("Couldn't create shadow surface");
