@@ -35,6 +35,12 @@
 #include "SDL_main.h"
 #include "SDL_loadso.h"
 
+#ifndef _WIN32_WCE
+#include "SDL_dibvideo.h"
+#else
+#include "../wingapi/SDL_gapivideo.h"
+#endif
+
 #ifdef WMMSG_DEBUG
 #include "wmmsg.h"
 #endif
@@ -46,12 +52,59 @@
 #define NO_GETKEYBOARDSTATE
 #if _WIN32_WCE < 420
 #define NO_CHANGEDISPLAYSETTINGS
+#undef WM_MOUSELEAVE
+
+#define DM_DISPLAYORIENTATION 0x00800000L
+typedef struct _devicemode { 
+  WCHAR dmDeviceName[CCHDEVICENAME]; 
+  WORD dmSpecVersion; 
+  WORD dmDriverVersion; 
+  WORD dmSize; 
+  WORD dmDriverExtra; 
+  DWORD dmFields; 
+  short dmOrientation; 
+  short dmPaperSize; 
+  short dmPaperLength; 
+  short dmPaperWidth; 
+  short dmScale; 
+  short dmCopies; 
+  short dmDefaultSource; 
+  short dmPrintQuality; 
+  short dmColor; 
+  short dmDuplex; 
+  short dmYResolution; 
+  short dmTTOption; 
+  short dmCollate; 
+  WCHAR dmFormName[CCHFORMNAME]; 
+  WORD dmLogPixels; 
+  DWORD dmBitsPerPel; 
+  DWORD dmPelsWidth; 
+  DWORD dmPelsHeight; 
+  DWORD dmDisplayFlags; 
+  DWORD dmDisplayFrequency; 
+  DWORD dmDisplayOrientation;
+} DEVMODE_2003, *LPDEVMODE_2003;
+#define DMDO_0      0
+#define DMDO_90     1
+#define DMDO_180    2
+#define DMDO_270    4
+typedef LONG (*tChangeDisplaySettingsEx)(LPCTSTR, LPDEVMODE_2003, HWND, DWORD, LPVOID);
+tChangeDisplaySettingsEx dynChangeDisplaySettingsEx = NULL;
+
+LONG initDspMode = -1;
+int currDspMode = -1;
+#define ROTATE_NONE	0
+#define ROTATE_LEFT	1
+#define ROTATE_RIGHT	2
+#define ROTATE_FLIP	3
 #endif
 #endif
 
 /* The window we use for everything... */
 #ifdef _WIN32_WCE
 LPWSTR SDL_Appname = NULL;
+#undef WM_GETMINMAXINFO
+static int translatelandscape = 0, isLandscape = 0;
 #else
 LPSTR SDL_Appname = NULL;
 #endif
@@ -230,6 +283,7 @@ static void SDL_RestoreDesktopMode(void)
 }
 
 #ifdef WM_MOUSELEAVE
+#warning "warn"
 /* 
    Special code to handle mouse leave events - this sucks...
    http://support.microsoft.com/support/kb/articles/q183/1/07.asp
@@ -316,6 +370,151 @@ static void WIN_GetKeyboardState(void)
 #endif /* !NO_GETKEYBOARDSTATE */
 }
 
+#ifdef _WIN32_WCE
+static LONG getDisplayMode(void)
+{
+	DEVMODE_2003 devMode;
+	LONG r;
+	memset(&devMode, 0, sizeof(devMode));
+	devMode.dmSize = sizeof(devMode);
+	devMode.dmFields = DM_DISPLAYORIENTATION;
+
+	r = dynChangeDisplaySettingsEx(NULL, &devMode, NULL, CDS_TEST, NULL);
+	debugLog("SDL: orientation %d", devMode.dmDisplayOrientation);
+	return devMode.dmDisplayOrientation;
+}
+
+static int deRotate(LONG neworientation)
+{
+	if (initDspMode == DMDO_0) {
+		if (neworientation == DMDO_0)
+			return ROTATE_NONE;
+		else if (neworientation == DMDO_90)
+			return ROTATE_LEFT;
+		else if (neworientation == DMDO_270)
+			return ROTATE_RIGHT;
+
+	} else if (initDspMode == DMDO_90) {
+		if (neworientation == DMDO_0)
+			return ROTATE_LEFT;
+		else if (neworientation == DMDO_90)
+			return ROTATE_NONE;
+		else if (neworientation == DMDO_270)
+			return ROTATE_FLIP;
+
+	} else if (initDspMode == DMDO_270) {
+		if (neworientation == DMDO_0)
+			return ROTATE_RIGHT;
+		else if (neworientation == DMDO_90)
+			return ROTATE_FLIP;
+		else if (neworientation == DMDO_270)
+			return ROTATE_NONE;
+	}
+
+	return ROTATE_NONE;
+}
+
+void InitializeDisplayOrientation(void)
+{
+	HINSTANCE h = NULL;
+
+	/* mark the initial orientation if the device does not support orient. reporting */
+	if ( (unsigned int) GetSystemMetrics(SM_CXSCREEN) < (unsigned int) GetSystemMetrics(SM_CYSCREEN) ) 	//portrait
+		isLandscape = 0;
+	else
+		isLandscape = 1;
+
+	/* orientation call, if exists */
+	if (!dynChangeDisplaySettingsEx)
+	{
+		h = LoadLibrary(TEXT("coredll.dll"));
+		if (!h)
+			debugLog("SDL: Cannot load coredll");
+		else {
+			dynChangeDisplaySettingsEx = (tChangeDisplaySettingsEx) GetProcAddress(h, TEXT("ChangeDisplaySettingsEx"));
+			FreeLibrary(h);
+		}
+	}
+	if (dynChangeDisplaySettingsEx) {
+		currDspMode = initDspMode = getDisplayMode();
+	} else {
+		debugLog("SDL: No orientation reporting");
+		initDspMode = -1;
+	}
+}
+#endif
+
+void transform(SDL_RotateAttr rotate, char ozone, Sint16 *x, Sint16 *y) {
+	SDL_VideoDevice *this = current_video;
+	Sint16 rotatedX;
+	Sint16 rotatedY;
+
+	if (ozone) {
+		*x = *x * 2;
+		*y = *y * 2;
+	}
+
+	/* first, derotate if possible */
+	if (initDspMode != -1) {
+		int w = displayProperties.cxWidth;
+		int h = displayProperties.cyHeight;
+		if (initDspMode != DMDO_0)
+		{
+			w ^= h;
+			h ^= w;
+			w ^= h;
+		}
+		if (currDspMode == ROTATE_LEFT) {
+			*x ^= *y;
+			*y ^= *x;
+			*x ^= *y;
+			*y = h - *y;
+		} else if (currDspMode == ROTATE_RIGHT) {
+			*x ^= *y;
+			*y ^= *x;
+			*x ^= *y;
+			*x = w - *x;
+		} else if (currDspMode == ROTATE_FLIP) {
+			*x ^= *y;
+			*y ^= *x;
+			*x ^= *y;
+		}
+	} else if (translatelandscape) {
+		*x ^= *y;
+		*y ^= *x;
+		*x ^= *y;
+		*y = displayProperties.cyHeight - *y;
+	}
+
+	/* then, rotate sccording to surface */
+	switch(rotate) {
+		case SDL_ROTATE_NONE:
+			*x -= padWidth;
+			*y -= padHeight;
+			break;
+		case SDL_ROTATE_LEFT:
+			if (!SDL_VideoSurface)
+				break;
+			*x -= padHeight;
+			*y -= padWidth;
+			rotatedX = SDL_VideoSurface->w - *y;
+			rotatedY = *x;
+			*x = rotatedX;
+			*y = rotatedY;
+			break;
+		case SDL_ROTATE_RIGHT:
+			if (!SDL_VideoSurface)
+				break;
+			*x -= padHeight;
+			*y -= padWidth;
+			rotatedX = *y;
+			rotatedY = SDL_VideoSurface->h - *x;
+			*x = rotatedX;
+			*y = rotatedY;
+			break;
+	}
+}
+
 /* The main Win32 event handler
 DJM: This is no longer static as (DX5/DIB)_CreateWindow needs it
 */
@@ -324,14 +523,13 @@ LRESULT CALLBACK WinMessage(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
 	SDL_VideoDevice *this = current_video;
 	static int mouse_pressed = 0;
 	static int in_window = 0;
+
 #ifdef WMMSG_DEBUG
-	fprintf(stderr, "Received windows message:  ");
 	if ( msg > MAX_WMMSG ) {
-		fprintf(stderr, "%d", msg);
+		debugLog("SDL: Received windows message:  %d -- 0x%X, 0x%X\n", msg, wParam, lParam);
 	} else {
-		fprintf(stderr, "%s", wmtab[msg]);
+		debugLog("SDL: Received windows message:  %s -- 0x%X, 0x%X\n", wmtab[msg], wParam, lParam);
 	}
-	fprintf(stderr, " -- 0x%X, 0x%X\n", wParam, lParam);
 #endif
 	switch (msg) {
 
@@ -367,6 +565,8 @@ LRESULT CALLBACK WinMessage(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
 			}
 #endif
 
+				if (this->hidden && this->hidden->gapiFuncs.dynamicGXResume)
+					this->hidden->gapiFuncs.dynamicGXResume();
 				posted = SDL_PrivateAppActive(1, appstate);
 				WIN_GetKeyboardState();
 			} else {
@@ -394,6 +594,8 @@ LRESULT CALLBACK WinMessage(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
 #endif
 					}
 				}
+				if (this->hidden && this->hidden->gapiFuncs.dynamicGXResume)
+					this->hidden->gapiFuncs.dynamicGXSuspend();
 				posted = SDL_PrivateAppActive(0, appstate);
 			}
 			return(0);
@@ -533,6 +735,10 @@ LRESULT CALLBACK WinMessage(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
 						GapiTransform(this->hidden->userOrientation, this->hidden->hiresFix, &x, &y);
 #endif
 				}
+#ifdef _WIN32_WCE
+				/* Since stylus movements are not continuous */
+				posted = SDL_PrivateMouseMotion(0, 0, x, y);
+#endif
 				posted = SDL_PrivateMouseButton(
 							state, button, x, y);
 			}
@@ -715,6 +921,48 @@ LRESULT CALLBACK WinMessage(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
 		return(TRUE);
 #endif
 
+#ifdef _WIN32_WCE
+		/* mark the device's orientation at startup */
+		case WM_CREATE: {
+			OSVERSIONINFO wv = { 0 };
+			wv.dwOSVersionInfoSize = sizeof(LPOSVERSIONINFO);
+			GetVersionEx(&wv);
+			debugLog("SDL: Device is %s, OS version %d.%d build %d", (isLandscape) ? "landscape" : "portrait", 
+					wv.dwMajorVersion, wv.dwMinorVersion, wv.dwBuildNumber );
+			InitializeDisplayOrientation();
+
+		}
+		break; // fall through to the default handler
+
+		case WM_SETTINGCHANGE: {
+		       if (initDspMode == -1) {
+			       int oldtmp = translatelandscape;
+			       if ( (unsigned int) GetSystemMetrics(SM_CXSCREEN) < (unsigned int) GetSystemMetrics(SM_CYSCREEN) ) 	//portrait
+				       translatelandscape = (isLandscape == 0) ? 0 : 1;
+			       else
+				       translatelandscape = (isLandscape == 1) ? 0 : 1;
+			       debugLog("SDL: Caught WM_SETTINGCHANGE %d -> %d (flag %d)", oldtmp, translatelandscape, isLandscape);
+		       } else {
+				currDspMode = deRotate(getDisplayMode());
+				switch (currDspMode)
+				{
+					case ROTATE_NONE:
+						debugLog("SDL: Selecting no translation");
+						break;
+					case ROTATE_LEFT:
+						debugLog("SDL: Selecting left translation");
+						break;
+					case ROTATE_RIGHT:
+						debugLog("SDL: Selecting right translation");
+						break;
+					case ROTATE_FLIP:
+						debugLog("SDL: Selecting flip translation");
+						break;
+				}
+		       }
+	        }
+		break; // fall through to the default handler
+#endif
 		default: {
 			/* Special handling by the video driver */
 			if (HandleMessage) {

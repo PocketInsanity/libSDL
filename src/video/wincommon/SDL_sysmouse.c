@@ -246,7 +246,7 @@ void WIN_UpdateMouse(_THIS)
 /* Check to see if we need to enter or leave mouse relative mode */
 void WIN_CheckMouseMode(_THIS)
 {
-#ifndef _WIN32_WCE 
+#ifndef _WIN32_WCE
         /* If the mouse is hidden and input is grabbed, we use relative mode */
         if ( !(SDL_cursorstate & CURSOR_VISIBLE) &&
              (this->input_grab != SDL_GRAB_OFF) ) {
@@ -255,6 +255,6 @@ void WIN_CheckMouseMode(_THIS)
                 mouse_relative = 0;
         }
 #else
-		mouse_relative =  0; 
+		mouse_relative =  0;
 #endif
 }

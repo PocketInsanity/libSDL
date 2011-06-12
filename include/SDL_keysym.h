@@ -253,7 +253,52 @@ typedef enum {
 	SDLK_F13		= 294,
 	SDLK_F14		= 295,
 	SDLK_F15		= 296,
+#ifdef _WIN32_WCE
+	SDLK_F16		= 297,
+	SDLK_F17		= 298,
+	SDLK_F18		= 299,
+	SDLK_F19		= 300,
+	SDLK_F20		= 301,
+	SDLK_F21		= 302,
+	SDLK_F22		= 303,
+	SDLK_F23		= 304,
+	SDLK_F24		= 305,
 
+	/* Key state modifier keys */
+	SDLK_NUMLOCK		= 310,
+	SDLK_CAPSLOCK		= 311,
+	SDLK_SCROLLOCK		= 312,
+	SDLK_RSHIFT		= 313,
+	SDLK_LSHIFT		= 314,
+	SDLK_RCTRL		= 315,
+	SDLK_LCTRL		= 316,
+	SDLK_RALT		= 317,
+	SDLK_LALT		= 318,
+	SDLK_RMETA		= 319,
+	SDLK_LMETA		= 320,
+	SDLK_LSUPER		= 321,		/* Left "Windows" key */
+	SDLK_RSUPER		= 322,		/* Right "Windows" key */
+	SDLK_MODE		= 323,		/* "Alt Gr" key */
+	SDLK_COMPOSE		= 324,		/* Multi-key compose key */
+
+	/* Miscellaneous function keys */
+	SDLK_HELP		= 325,
+	SDLK_PRINT		= 326,
+	SDLK_SYSREQ		= 327,
+	SDLK_BREAK		= 328,
+	SDLK_MENU		= 329,
+	SDLK_POWER		= 330,		/* Power Macintosh power key */
+	SDLK_EURO		= 331,		/* Some european keyboards */
+	SDLK_UNDO		= 332,		/* Atari keyboard has Undo */
+
+	/* Add any other keys here */
+	SDLK_APP1		= 340,
+	SDLK_APP2		= 341,
+	SDLK_APP3		= 342,
+	SDLK_APP4		= 343,
+	SDLK_APP5		= 344,
+	SDLK_APP6		= 345,
+#else
 	/* Key state modifier keys */
 	SDLK_NUMLOCK		= 300,
 	SDLK_CAPSLOCK		= 301,
@@ -271,7 +316,7 @@ typedef enum {
 	SDLK_MODE		= 313,		/* "Alt Gr" key */
 	SDLK_COMPOSE		= 314,		/* Multi-key compose key */
 
-	/* Miscellaneous function keys */
+ 	/* Miscellaneous function keys */
 	SDLK_HELP		= 315,
 	SDLK_PRINT		= 316,
 	SDLK_SYSREQ		= 317,
@@ -280,8 +325,7 @@ typedef enum {
 	SDLK_POWER		= 320,		/* Power Macintosh power key */
 	SDLK_EURO		= 321,		/* Some european keyboards */
 	SDLK_UNDO		= 322,		/* Atari keyboard has Undo */
-
-	/* Add any other keys here */
+#endif
 
 	SDLK_LAST
 } SDLKey;

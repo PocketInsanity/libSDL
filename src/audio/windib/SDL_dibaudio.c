@@ -34,6 +34,7 @@
 #if defined(_WIN32_WCE) && (_WIN32_WCE < 300)
 #include "win_ce_semaphore.h"
 #endif
+#undef waveOutGetErrorText
 
 
 /* Audio driver functions */
@@ -141,7 +142,7 @@ static void SetMMerror(char *function, MMRESULT code)
 /* Set high priority for the audio thread */
 static void DIB_ThreadInit(_THIS)
 {
-	SetThreadPriority(GetCurrentThread(), THREAD_PRIORITY_HIGHEST);
+	SetThreadPriority(GetCurrentThread(), this->hidden->thread_priority);
 }
 
 void DIB_WaitAudio(_THIS)
@@ -222,6 +223,10 @@ int DIB_OpenAudio(_THIS, SDL_AudioSpec *spec)
 	MMRESULT result;
 	int i;
 	WAVEFORMATEX waveformat;
+
+	this->hidden->thread_priority = spec->thread_priority;
+	if (this->hidden->thread_priority <= 0)
+		this->hidden->thread_priority = THREAD_PRIORITY_NORMAL;
 
 	/* Initialize the wavebuf structures for closing */
 	sound = NULL;

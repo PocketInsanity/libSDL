@@ -27,10 +27,28 @@
 
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
+#ifndef _WIN32_WCE
 #include <mmsystem.h>
+#endif
 
 #include "SDL_cdrom.h"
+
+#ifdef _WIN32_WCE
+
+int SDL_SYS_CDInit() {
+	return 0;
+}
+
+static void SDL_SYS_CDClose(SDL_CD *cdrom) {
+}
+
+void SDL_SYS_CDQuit(void) {
+}
+
+#else
+
 #include "../SDL_syscdrom.h"
+
 
 /* This really broken?? */
 #define BROKEN_MCI_PAUSE	/* Pausing actually stops play -- Doh! */
@@ -382,4 +400,8 @@ void SDL_SYS_CDQuit(void)
 	}
 }
 
+<<<<<<< HEAD
 #endif /* SDL_CDROM_WIN32 */
+=======
+#endif
+>>>>>>> b84a788... Applied patch libsdl_20090809_diff from http://users.uoa.gr/~knakos/scummvm/libraries/

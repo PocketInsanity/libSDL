@@ -61,17 +61,19 @@ SYNCHHANDLE CreateSemaphoreCE (
 {
    SYNCHHANDLE hSynch = NULL, result = NULL;
 
-   __try
+//   __try
 	{
       if (lInitialCount > lMaximumCount || lMaximumCount < 0 || lInitialCount < 0) 
 	  {
               /* Bad parameters */
          SetLastError (SYNCH_ERROR);
-         __leave;
+//         __leave;
+         return CleanUp(hSynch, 6);
       }
 
       hSynch = HeapAlloc (GetProcessHeap(), HEAP_ZERO_MEMORY, SYNCH_HANDLE_SIZE);
-      if (hSynch == NULL) __leave;
+//      if (hSynch == NULL) __leave;
+      if (hSynch == NULL) return CleanUp(hSynch, 6);
 
       hSynch->MaxCount = lMaximumCount;
       hSynch->CurCount = lInitialCount;
@@ -87,12 +89,12 @@ SYNCHHANDLE CreateSemaphoreCE (
       ReleaseMutex (hSynch->hMutex);
       hSynch->hSemph = NULL;
    }
-   __finally
-   {
-       /* Return with the handle, or, if there was any error, return
-        a null after closing any open handles and freeing any allocated memory. */
+//   __finally
+//   {
+//       /* Return with the handle, or, if there was any error, return
+//        a null after closing any open handles and freeing any allocated memory. */
       result=CleanUp(hSynch, 6 /* An event and a mutex, but no semaphore. */);
-   }
+//   }
 
    return result;
 }
@@ -105,7 +107,7 @@ BOOL ReleaseSemaphoreCE (SYNCHHANDLE hSemCE, LONG cReleaseCount, LPLONG lpPrevio
    /* Gain access to the object to assure that the release count
       would not cause the total count to exceed the maximum. */
 
-   __try 
+//   __try 
    {
       WaitForSingleObject (hSemCE->hMutex, INFINITE);
 	  /* reply only if asked to */	
@@ -115,7 +117,9 @@ BOOL ReleaseSemaphoreCE (SYNCHHANDLE hSemCE, LONG cReleaseCount, LPLONG lpPrevio
 	  {
          SetLastError (SYNCH_ERROR);
          Result = FALSE;
-         __leave;
+//         __leave;
+	 ReleaseMutex (hSemCE->hMutex);
+         return Result;
       }
       hSemCE->CurCount += cReleaseCount;
 
@@ -124,10 +128,10 @@ BOOL ReleaseSemaphoreCE (SYNCHHANDLE hSemCE, LONG cReleaseCount, LPLONG lpPrevio
 
       SetEvent (hSemCE->hEvent);
    }
-   __finally
-   {
+//   __finally
+//   {
       ReleaseMutex (hSemCE->hMutex);
-   }
+//   }
 
    return Result;
 }

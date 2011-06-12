@@ -40,6 +40,10 @@ typedef enum
 struct SDL_PrivateVideoData {
     HBITMAP screen_bmp;
     HPALETTE screen_pal;
+	void *work_pixels; /* if the display needs to be rotated, memory allocated by the API */
+	void *rotation_pixels; /* if the display needs to be rotated, memory allocated by the code */
+	SDL_RotateAttr rotation;
+	char ozoneHack; /* force stylus translation if running without Hi Res flag */
 
 #define NUM_MODELISTS	4		/* 8, 16, 24, and 32 bits-per-pixel */
     int SDL_nummodes[NUM_MODELISTS];
@@ -54,9 +58,13 @@ struct SDL_PrivateVideoData {
 #endif
 };
 /* Old variable names */
-#define screen_bmp		(this->hidden->screen_bmp)
-#define screen_pal		(this->hidden->screen_pal)
+#define screen_bmp			(this->hidden->screen_bmp)
+#define screen_pal			(this->hidden->screen_pal)
 #define SDL_nummodes		(this->hidden->SDL_nummodes)
 #define SDL_modelist		(this->hidden->SDL_modelist)
+#define work_pixels			(this->hidden->work_pixels)
+#define rotation			(this->hidden->rotation)
+#define rotation_pixels		(this->hidden->rotation_pixels)
+#define ozoneHack			(this->hidden->ozoneHack)
 
 #endif /* _SDL_dibvideo_h */
