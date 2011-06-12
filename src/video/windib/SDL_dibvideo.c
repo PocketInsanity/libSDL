@@ -29,14 +29,23 @@ static char rcsid =
 #include <stdlib.h>
 #include <malloc.h>
 #include <windows.h>
-#if defined(WIN32_PLATFORM_PSPC)
-#include <aygshell.h>                      // Add Pocket PC includes
+#if defined(UNDER_CE) && (_WIN32_WCE >= 300)
+/*#include <aygshell.h>                      // Add Pocket PC includes
 #pragma comment( lib, "aygshell" )         // Link Pocket PC library
+*/
+#include <windows.h>
+#endif
+#ifdef _MSC_VER
+#define inline __inline
 #endif
 
 /* Not yet in the mingw32 cross-compile headers */
 #ifndef CDS_FULLSCREEN
 #define CDS_FULLSCREEN	4
+#endif
+
+#ifndef WS_THICKFRAME
+#define WS_THICKFRAME 0
 #endif
 
 #include "SDL.h"
@@ -56,6 +65,17 @@ static char rcsid =
 #define NO_GETDIBITS
 #define NO_CHANGEDISPLAYSETTINGS
 #define NO_GAMMA_SUPPORT
+
+/* uncomment this line if you target WinCE 3.x platform: */
+//#define NO_SETDIBCOLORTABLE
+
+/* these 2 variables are used to suport paletted DIBs on WinCE 3.x that 
+   does not implement SetDIBColorTable, and when SetDIBColorTable is not working.
+   Slow. DIB is recreated every time.
+*/
+static BITMAPINFO *last_bitmapinfo;
+static void** last_bits;
+
 #endif
 #ifndef WS_MAXIMIZE
 #define WS_MAXIMIZE	0
@@ -96,6 +116,13 @@ static void DIB_WinPAINT(_THIS, HDC hdc);
 
 /* helper fn */
 static int DIB_SussScreenDepth();
+
+#ifdef _WIN32_WCE
+void DIB_ShowTaskBar(BOOL taskBarShown);
+#ifdef ENABLE_WINGAPI
+extern void GAPI_GrabHardwareKeys(BOOL grab);
+#endif
+#endif
 
 /* DIB driver bootstrap functions */
 
@@ -353,6 +380,9 @@ int DIB_VideoInit(_THIS, SDL_PixelFormat *vformat)
 	/* Fill in some window manager capabilities */
 	this->info.wm_available = 1;
 
+	/* Rotation information */
+	rotation = SDL_ROTATE_NONE;
+
 	/* We're done! */
 	return(0);
 }
@@ -371,6 +401,42 @@ SDL_Rect **DIB_ListModes(_THIS, SDL_PixelFormat *format, Uint32 flags)
 #endif
 }
 
+#ifdef _WIN32_WCE
+
+void DIB_ShowTaskBar(BOOL taskBarShown) {
+#if !defined(WIN32_PLATFORM_PSPC) || (_WIN32_WCE < 300)
+	// Hide taskbar, WinCE 2.x style - from EasyCE
+	HKEY hKey=0;
+	DWORD dwValue = 0;
+	unsigned long lSize = sizeof( DWORD );
+	DWORD dwType = REG_DWORD;
+	HWND hWnd;
+
+	RegOpenKeyEx( HKEY_LOCAL_MACHINE, TEXT("\\software\\microsoft\\shell"), 0, KEY_ALL_ACCESS, &hKey );
+	RegQueryValueEx( hKey, TEXT("TBOpt"), 0, &dwType, (BYTE*)&dwValue, &lSize );
+	if (taskBarShown)
+		dwValue &= 0xFFFFFFFF - 8;	// reset bit to show taskbar
+    else 
+		dwValue |= 8;	// set bit to hide taskbar
+	RegSetValueEx( hKey, TEXT("TBOpt"), 0, REG_DWORD, (BYTE*)&dwValue, lSize );
+	hWnd = FindWindow( TEXT("HHTaskBar"), NULL );
+	SendMessage(hWnd, WM_COMMAND, 0x03EA, 0 );
+	SetForegroundWindow(SDL_Window);
+#else
+	if (taskBarShown) 
+		SHFullScreen(SDL_Window, SHFS_SHOWTASKBAR | SHFS_SHOWSIPBUTTON | SHFS_SHOWSTARTICON);
+	else 
+		SHFullScreen(SDL_Window, SHFS_HIDETASKBAR | SHFS_HIDESIPBUTTON | SHFS_HIDESTARTICON);
+#endif
+	if (FindWindow(TEXT("HHTaskBar"), NULL)) { // is it valid for HPC ?
+		if (taskBarShown) 
+			ShowWindow(FindWindow(TEXT("HHTaskBar"),NULL),SW_SHOWNORMAL);
+		else 
+			ShowWindow(FindWindow(TEXT("HHTaskBar"),NULL),SW_HIDE);
+	}
+}
+
+#endif
 
 /*
   Helper fn to work out which screen depth windows is currently using.
@@ -445,6 +511,7 @@ static int DIB_SussScreenDepth()
 
 /* Various screen update functions available */
 static void DIB_NormalUpdate(_THIS, int numrects, SDL_Rect *rects);
+static void DIB_RotatedUpdate(_THIS, int numrects, SDL_Rect *rects);
 
 SDL_Surface *DIB_SetVideoMode(_THIS, SDL_Surface *current,
 				int width, int height, int bpp, Uint32 flags)
@@ -464,11 +531,14 @@ SDL_Surface *DIB_SetVideoMode(_THIS, SDL_Surface *current,
 	RECT bounds;
 	int x, y;
 	Uint32 Rmask, Gmask, Bmask;
+	int screenWidth, screenHeight, i;
 
+#ifdef HAVE_OPENGL
 	/* Clean up any GL context that may be hanging around */
 	if ( current->flags & SDL_OPENGL ) {
 		WIN_GL_ShutDown(this);
 	}
+#endif
 
 	/* Recalculate the bitmasks if necessary */
 	if ( bpp == current->format->BitsPerPixel ) {
@@ -517,23 +587,30 @@ SDL_Surface *DIB_SetVideoMode(_THIS, SDL_Surface *current,
 	video->h = height;
 	video->pitch = SDL_CalculatePitch(video);
 
-#ifdef WIN32_PLATFORM_PSPC
+//#ifdef WIN32_PLATFORM_PSPC
 	 /* Stuff to hide that $#!^%#$ WinCE taskbar in fullscreen... */
 	if ( flags & SDL_FULLSCREEN ) {
 		if ( !(prev_flags & SDL_FULLSCREEN) ) {
-			SHFullScreen(SDL_Window, SHFS_HIDETASKBAR);
-			SHFullScreen(SDL_Window, SHFS_HIDESIPBUTTON);
-			ShowWindow(FindWindow(TEXT("HHTaskBar"),NULL),SW_HIDE);
+
+			//ShowWindow(SDL_Window, SW_SHOW);
+			//SetWindowPos(SDL_Window, HWND_TOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE);
+			//SetForegroundWindow(SDL_Window);
+
+			//SHFullScreen(SDL_Window, SHFS_HIDETASKBAR | SHFS_HIDESIPBUTTON | SHFS_HIDESTARTICON);
+			//ShowWindow(FindWindow(TEXT("HHTaskBar"),NULL),SW_HIDE);
+
+			DIB_ShowTaskBar(FALSE);
+
 		}
 		video->flags |= SDL_FULLSCREEN;
 	} else {
 		if ( prev_flags & SDL_FULLSCREEN ) {
-			SHFullScreen(SDL_Window, SHFS_SHOWTASKBAR);
-			SHFullScreen(SDL_Window, SHFS_SHOWSIPBUTTON);
-			ShowWindow(FindWindow(TEXT("HHTaskBar"),NULL),SW_SHOWNORMAL);
+			//SHFullScreen(SDL_Window, SHFS_SHOWTASKBAR | SHFS_SHOWSIPBUTTON | SHFS_SHOWSTARTICON);
+			//ShowWindow(FindWindow(TEXT("HHTaskBar"),NULL),SW_SHOWNORMAL);
+			DIB_ShowTaskBar(TRUE);
 		}
 	}
-#endif
+//#endif
 #ifndef NO_CHANGEDISPLAYSETTINGS
 	/* Set fullscreen mode if appropriate */
 	if ( (flags & SDL_FULLSCREEN) == SDL_FULLSCREEN ) {
@@ -559,6 +636,7 @@ SDL_Surface *DIB_SetVideoMode(_THIS, SDL_Surface *current,
 		DeleteObject(screen_pal);
 		screen_pal = NULL;
 	}
+
 	if ( bpp <= 8 )
 	{
 	/*	RJR: March 28, 2000
@@ -590,7 +668,7 @@ SDL_Surface *DIB_SetVideoMode(_THIS, SDL_Surface *current,
 			}
 		}
 #if WS_MAXIMIZE
-		if (IsZoomed(SDL_Window)) style |= WS_MAXIMIZE;
+//		if (IsZoomed(SDL_Window)) style |= WS_MAXIMIZE;
 #endif
 	}
 
@@ -614,6 +692,7 @@ SDL_Surface *DIB_SetVideoMode(_THIS, SDL_Surface *current,
 			binfo_size += video->format->palette->ncolors *
 							sizeof(RGBQUAD);
 		}
+
 		binfo = (BITMAPINFO *)malloc(binfo_size);
 		if ( ! binfo ) {
 			if ( video != current ) {
@@ -641,19 +720,65 @@ SDL_Surface *DIB_SetVideoMode(_THIS, SDL_Surface *current,
 			((Uint32*)binfo->bmiColors)[1] = video->format->Gmask;
 			((Uint32*)binfo->bmiColors)[2] = video->format->Bmask;
 		} else {
+#ifdef UNDER_CE
+			binfo->bmiHeader.biCompression = BI_RGB;	/* 332 */
+			if ( video->format->palette ) {
+				binfo->bmiHeader.biClrUsed = video->format->palette->ncolors;
+				for(i=0; i<video->format->palette->ncolors; i++)
+				{
+					binfo->bmiColors[i].rgbRed=i&(7<<5);
+					binfo->bmiColors[i].rgbGreen=(i&(7<<2))<<3;
+					binfo->bmiColors[i].rgbBlue=(i&3)<<5;
+					binfo->bmiColors[i].rgbReserved=0;
+			   }
+			}
+#else
 			binfo->bmiHeader.biCompression = BI_RGB;	/* BI_BITFIELDS for 565 vs 555 */
 			if ( video->format->palette ) {
 				memset(binfo->bmiColors, 0,
 					video->format->palette->ncolors*sizeof(RGBQUAD));
 			}
+#endif
 		}
 
 		/* Create the offscreen bitmap buffer */
 		hdc = GetDC(SDL_Window);
+		/* See if we need to rotate the buffer (WinCE specific) */
+		screenWidth = GetDeviceCaps(hdc, HORZRES);
+		screenHeight = GetDeviceCaps(hdc, VERTRES);
+		rotation = SDL_ROTATE_NONE;
+		work_pixels = NULL;
+		if (rotation_pixels) {
+			free(rotation_pixels);
+			rotation_pixels = NULL;
+		}
+
+		if ((flags & SDL_FULLSCREEN) && (width>height) && (width > screenWidth) ) {
+			/* OK, we rotate the screen */
+			video->pixels = malloc(video->h * video->pitch);
+			rotation_pixels = video->pixels;
+			if (video->pixels)
+				rotation = SDL_ROTATE_LEFT;
+			OutputDebugString(TEXT("will rotate\r\n"));
+		}
+
 		screen_bmp = CreateDIBSection(hdc, binfo, DIB_RGB_COLORS,
-					(void **)(&video->pixels), NULL, 0);
+			(rotation == SDL_ROTATE_NONE ? (void **)(&video->pixels) : (void**)&work_pixels), NULL, 0);
 		ReleaseDC(SDL_Window, hdc);
+#if defined(UNDER_CE) 
+/* keep bitmapinfo for palette in 8-bit modes for devices that don't have SetDIBColorTable */
+		last_bits = (rotation == SDL_ROTATE_NONE ? (void **)(&video->pixels) : (void**)&work_pixels);
+		if(last_bitmapinfo)
+			free(last_bitmapinfo);
+		if(is16bitmode)
+		{
+			last_bitmapinfo = 0;
+			free(binfo);
+		} else
+			last_bitmapinfo = binfo;
+#else
 		free(binfo);
+#endif
 		if ( screen_bmp == NULL ) {
 			if ( video != current ) {
 				SDL_FreeSurface(video);
@@ -661,7 +786,7 @@ SDL_Surface *DIB_SetVideoMode(_THIS, SDL_Surface *current,
 			SDL_SetError("Couldn't create DIB section");
 			return(NULL);
 		}
-		this->UpdateRects = DIB_NormalUpdate;
+		this->UpdateRects = (work_pixels ? DIB_RotatedUpdate : DIB_NormalUpdate);
 
 		/* Set video surface flags */
 		if ( bpp <= 8 ) {
@@ -696,6 +821,14 @@ SDL_Surface *DIB_SetVideoMode(_THIS, SDL_Surface *current,
 		bounds.top = SDL_windowY;
 		bounds.right = SDL_windowX+video->w;
 		bounds.bottom = SDL_windowY+video->h;
+#ifdef UNDER_CE
+		if(rotation != SDL_ROTATE_NONE)
+		{   
+			int t=bounds.right;
+			bounds.right = bounds.bottom;
+			bounds.bottom=t;
+		}
+#endif
 		AdjustWindowRectEx(&bounds, GetWindowLong(SDL_Window, GWL_STYLE), FALSE, 0);
 		width = bounds.right-bounds.left;
 		height = bounds.bottom-bounds.top;
@@ -710,7 +843,9 @@ SDL_Surface *DIB_SetVideoMode(_THIS, SDL_Surface *current,
 			y = (GetSystemMetrics(SM_CYSCREEN)-height)/2;
 		} else {
 			x = y = -1;
+#ifndef UNDER_CE
 			swp_flags |= SWP_NOMOVE;
+#endif
 		}
 		if ( y < 0 ) { /* Cover up title bar for more client area */
 			y -= GetSystemMetrics(SM_CYCAPTION)/2;
@@ -720,18 +855,45 @@ SDL_Surface *DIB_SetVideoMode(_THIS, SDL_Surface *current,
 		} else {
 			top = HWND_NOTOPMOST;
 		}
+#ifndef _WIN32_WCE
 		SetWindowPos(SDL_Window, top, x, y, width, height, swp_flags);
+#else
+		if (flags & SDL_FULLSCREEN) {
+/* When WinCE program switches resolution from larger to smaller we should move its window so it would be visible in fullscreen */
+//			SetWindowPos(SDL_Window, HWND_TOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE);
+			DIB_ShowTaskBar(FALSE);
+			if(x>0) x=0;	// remove space from the left side of a screen in 320x200 mode
+			if(y>0) y=0;
+			SetWindowPos(SDL_Window, HWND_TOPMOST, x, y, width, height, SWP_NOCOPYBITS);
+			ShowWindow(SDL_Window, SW_SHOW);
+		}
+		else
+			SetWindowPos(SDL_Window, top, x, y, width, height, swp_flags);
+#endif
+		
 		SDL_resizing = 0;
 		SetForegroundWindow(SDL_Window);
 	}
 
 	/* Set up for OpenGL */
 	if ( flags & SDL_OPENGL ) {
+#ifdef HAVE_OPENGL
 		if ( WIN_GL_SetupWindow(this) < 0 ) {
 			return(NULL);
 		}
 		video->flags |= SDL_OPENGL;
+#else
+		return (NULL);
+#endif
+
 	}
+
+#ifdef ENABLE_WINGAPI
+	/* Grab hardware keys if necessary */
+	if ( flags & SDL_FULLSCREEN ) {
+		GAPI_GrabHardwareKeys(TRUE);
+	}
+#endif
 
 	/* We're live! */
 	return(video);
@@ -748,16 +910,108 @@ static void DIB_FreeHWSurface(_THIS, SDL_Surface *surface)
 }
 static int DIB_LockHWSurface(_THIS, SDL_Surface *surface)
 {
-	return(0);
+	return(0); 
 }
 static void DIB_UnlockHWSurface(_THIS, SDL_Surface *surface)
 {
 	return;
 }
 
-static void DIB_NormalUpdate(_THIS, int numrects, SDL_Rect *rects)
+static inline void rotateBlit(unsigned short *src, unsigned short *dest, SDL_Rect *rect, int pitch) {
+	int i=rect->w, j=rect->h;
+	src+=i;
+
+	for (;i--;) {
+		register unsigned short *S=src--;
+// I use loop unrolling to spedup things a little
+		int cnt = j;
+		if(cnt&1)
+		{
+			*(dest++) = *S;
+			S+=pitch;
+		}
+		cnt>>=1;
+		if(cnt&1)
+		{
+			*(dest++) = *S;
+			S+=pitch;
+			*(dest++) = *S;
+			S+=pitch;
+		}
+		cnt>>=1;
+		for (; cnt--; ) {
+			*(dest++) = *S;
+			S+=pitch;
+			*(dest++) = *S;
+			S+=pitch;
+			*(dest++) = *S;
+			S+=pitch;
+			*(dest++) = *S;
+			S+=pitch;
+		}
+	}
+/* tiny optimization
+	int i, j;
+	src+=rect->w;
+
+	for (i=0; i<rect->w; i++) {
+		register unsigned short *S=src--;
+		for (j=0; j<rect->h; j++) {
+			*(dest++) = *S;
+			S+=pitch;
+		}
+	}
+*/
+/* original unoptimized version
+	int i, j;
+
+	for (i=0; i<rect->w; i++) {
+		for (j=0; j<rect->h; j++) {
+			dest[i * rect->h + j] = src[pitch * j + (rect->w - i)];
+		}
+	}
+*/
+}
+
+static inline void rotateBlit8(unsigned char *src, unsigned char *dest, SDL_Rect *rect, int pitch) {
+	int i=rect->w, j=rect->h;
+	src+=i;
+
+	for (;i--;) {
+		register unsigned char *S=src--;
+// I use loop unrolling to spedup things a little
+		int cnt = j;
+		if(cnt&1)
+		{
+			*(dest++) = *S;
+			S+=pitch;
+		}
+		cnt>>=1;
+		if(cnt&1)
+		{
+			*(dest++) = *S;
+			S+=pitch;
+			*(dest++) = *S;
+			S+=pitch;
+		}
+		cnt>>=1;
+		for (; cnt--; ) {
+			*(dest++) = *S;
+			S+=pitch;
+			*(dest++) = *S;
+			S+=pitch;
+			*(dest++) = *S;
+			S+=pitch;
+			*(dest++) = *S;
+			S+=pitch;
+		}
+	}
+}
+
+static void DIB_RotatedUpdate(_THIS, int numrects, SDL_Rect *rects) 
 {
 	HDC hdc, mdc;
+	HBITMAP hb, old;
 	int i;
 
 	hdc = GetDC(SDL_Window);
@@ -765,11 +1019,54 @@ static void DIB_NormalUpdate(_THIS, int numrects, SDL_Rect *rects)
 		SelectPalette(hdc, screen_pal, FALSE);
 	}
 	mdc = CreateCompatibleDC(hdc);
-	SelectObject(mdc, screen_bmp);
+	/*SelectObject(mdc, screen_bmp);*/
+	if(this->screen->format->BytesPerPixel == 2) {
+		for ( i=0; i<numrects; ++i ) {	
+			unsigned short *src = (unsigned short*)this->screen->pixels;
+			rotateBlit(src + (this->screen->w * rects[i].y) + rects[i].x, work_pixels, &rects[i], this->screen->w);		
+			hb = CreateBitmap(rects[i].h, rects[i].w, 1, 16, work_pixels);
+			old = (HBITMAP)SelectObject(mdc, hb);
+			BitBlt(hdc, rects[i].y, this->screen->w - (rects[i].x + rects[i].w), rects[i].h, rects[i].w,
+					mdc, 0, 0, SRCCOPY);
+			SelectObject(mdc, old);
+			DeleteObject(hb);
+		}
+	} else {
+		if ( screen_pal ) {
+			SelectPalette(mdc, screen_pal, FALSE);
+		}
+		for ( i=0; i<numrects; ++i ) {	
+			unsigned char *src = (unsigned char*)this->screen->pixels;
+			rotateBlit8(src + (this->screen->w * rects[i].y) + rects[i].x, work_pixels, &rects[i], this->screen->w);
+			hb = CreateBitmap(rects[i].h, rects[i].w, 1, 8, work_pixels);
+			old = (HBITMAP)SelectObject(mdc, hb);
+			BitBlt(hdc, rects[i].y, this->screen->w - (rects[i].x + rects[i].w), rects[i].h, rects[i].w,
+					mdc, 0, 0, SRCCOPY);
+			SelectObject(mdc, old);
+			DeleteObject(hb); 
+		}
+	}
+	DeleteDC(mdc);
+	ReleaseDC(SDL_Window, hdc);
+}
+
+static void DIB_NormalUpdate(_THIS, int numrects, SDL_Rect *rects)
+{
+	HDC hdc, mdc;
+	int i;
+	HBITMAP old;
+
+	hdc = GetDC(SDL_Window);
+	if ( screen_pal ) {
+		SelectPalette(hdc, screen_pal, FALSE);
+	}
+	mdc = CreateCompatibleDC(hdc);
+	old = (HBITMAP)SelectObject(mdc, screen_bmp);
 	for ( i=0; i<numrects; ++i ) {
 		BitBlt(hdc, rects[i].x, rects[i].y, rects[i].w, rects[i].h,
 					mdc, rects[i].x, rects[i].y, SRCCOPY);
 	}
+	SelectObject(mdc, old);
 	DeleteDC(mdc);
 	ReleaseDC(SDL_Window, hdc);
 }
@@ -778,10 +1075,11 @@ int DIB_SetColors(_THIS, int firstcolor, int ncolors, SDL_Color *colors)
 {
 	RGBQUAD *pal;
 	int i;
-#ifndef _WIN32_WCE
 	HDC hdc, mdc;
-#else
-	HDC hdc;
+
+#if defined(UNDER_CE) && defined(NO_SETDIBCOLORTABLE)
+	if(last_bitmapinfo==0)
+		return 0;
 #endif
 
 	/* Update the display palette */
@@ -811,14 +1109,39 @@ int DIB_SetColors(_THIS, int firstcolor, int ncolors, SDL_Color *colors)
 	}
 
 	/* Set the DIB palette and update the display */
-#ifndef _WIN32_WCE
 	mdc = CreateCompatibleDC(hdc);
+
+#if defined(UNDER_CE) 
+#if !defined(NO_SETDIBCOLORTABLE)
+/* BUG: For some reason SetDIBColorTable is not working when screen is not rotated */
+	if(rotation == SDL_ROTATE_NONE && last_bitmapinfo)
+#else
+	if(1)
+#endif
+	{
+		DeleteObject(screen_bmp);
+		last_bitmapinfo->bmiHeader.biClrUsed=256;
+		for ( i=firstcolor; i<firstcolor+ncolors; ++i )
+			last_bitmapinfo->bmiColors[i]=pal[i];
+		screen_bmp = CreateDIBSection(hdc, last_bitmapinfo, DIB_RGB_COLORS,
+			last_bits, NULL, 0);
+    }
+#else
 	SelectObject(mdc, screen_bmp);
 	SetDIBColorTable(mdc, firstcolor, ncolors, pal);
+#endif
+#ifndef UNDER_CE
 	BitBlt(hdc, 0, 0, this->screen->w, this->screen->h,
 	       mdc, 0, 0, SRCCOPY);
-	DeleteDC(mdc);
+#else
+	{
+		SDL_Rect rect;
+		rect.x=0; rect.y=0;
+		rect.w=this->screen->w; rect.h=this->screen->h;
+// Fixme: screen flickers:		(this->UpdateRects)(this, 1, &rect) ;
+	}
 #endif
+	DeleteDC(mdc);
 	ReleaseDC(SDL_Window, hdc);
 	return(1);
 }
@@ -938,26 +1261,34 @@ static void FlushMessageQueue()
 void DIB_VideoQuit(_THIS)
 {
 	/* Destroy the window and everything associated with it */
+	DIB_ShowTaskBar(TRUE);
+#ifdef ENABLE_WINGAPI
+	GAPI_GrabHardwareKeys(FALSE);
+#endif
+
 	if ( SDL_Window ) {
 		/* Delete the screen bitmap (also frees screen->pixels) */
 		if ( this->screen ) {
-#ifdef WIN32_PLATFORM_PSPC
+//#ifdef WIN32_PLATFORM_PSPC
 			if ( this->screen->flags & SDL_FULLSCREEN ) {
 				/* Unhide taskbar, etc. */
-				SHFullScreen(SDL_Window, SHFS_SHOWTASKBAR);
-				SHFullScreen(SDL_Window, SHFS_SHOWSIPBUTTON);
-				ShowWindow(FindWindow(TEXT("HHTaskBar"),NULL),SW_SHOWNORMAL);
+				//SHFullScreen(SDL_Window, SHFS_SHOWTASKBAR | SHFS_SHOWSIPBUTTON | SHFS_SHOWSTARTICON);
+				//ShowWindow(FindWindow(TEXT("HHTaskBar"),NULL),SW_SHOWNORMAL);
 			}
-#endif
+//#endif
 #ifndef NO_CHANGEDISPLAYSETTINGS
 			if ( this->screen->flags & SDL_FULLSCREEN ) {
 				ChangeDisplaySettings(NULL, 0);
 				ShowWindow(SDL_Window, SW_HIDE);
 			}
 #endif
+
+#ifdef HAVE_OPENGL
 			if ( this->screen->flags & SDL_OPENGL ) {
 				WIN_GL_ShutDown(this);
 			}
+#endif
+
 			this->screen->pixels = NULL;
 		}
 		if ( screen_bmp ) {

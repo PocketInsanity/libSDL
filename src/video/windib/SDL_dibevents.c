@@ -59,16 +59,78 @@ static BOOL prev_shiftstates[2];
    and give him a chance to handle some messages. */
 static WNDPROC userWindowProc = NULL;
 
+#ifdef _WIN32_WCE
+
+WPARAM rotateKey(WPARAM key, SDL_RotateAttr direction) {
+	switch (direction) {
+		case SDL_ROTATE_NONE:
+			return key;
+
+		case SDL_ROTATE_LEFT:
+			switch (key) {
+				case VK_UP:
+					return VK_RIGHT;
+				case VK_RIGHT:
+					return VK_DOWN;
+				case VK_DOWN:
+					return VK_LEFT;
+				case VK_LEFT:
+					return VK_UP;
+			}
+
+		case SDL_ROTATE_RIGHT:
+			switch (key) {
+				case VK_UP:
+					return VK_LEFT;
+				case VK_RIGHT:
+					return VK_UP;
+				case VK_DOWN:
+					return VK_RIGHT;
+				case VK_LEFT:
+					return VK_DOWN;
+			}
+	}
+
+	return key;
+}
+
+#endif
+
+
 /* The main Win32 event handler */
 LONG
  DIB_HandleMessage(_THIS, HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
 {
 	extern int posted;
+	MSG tmpmsg;
+	static int dropnextvklwinup = 0;
 
 	switch (msg) {
-		case WM_SYSKEYDOWN:
+		//case WM_SYSKEYDOWN:
 		case WM_KEYDOWN: {
 			SDL_keysym keysym;
+
+#ifdef _WIN32_WCE
+			// Drop spurious keystrokes
+			if ( 	wParam == VK_F20 ||					// VK_ROCKER with arrow keys
+				wParam == VK_F21 ||					// VK_DPAD with arrow keys
+				wParam == VK_F23					// VK_ACTION with dpad enter
+			   )
+				return 0;
+
+			if (wParam == VK_LWIN && PeekMessage(&tmpmsg, NULL, 0, 0, PM_NOREMOVE))		// drop VK_LWIN messages if they're part of a chord
+				if (tmpmsg.message == WM_KEYDOWN && tmpmsg.wParam != VK_LWIN) {
+#ifdef WMMSG_DEBUG
+					debugLog("SDL: DROPPING chorded VK_LWIN DOWN");
+#endif
+					dropnextvklwinup = 1;
+					return 0;
+				}
+
+			// Rotate key if necessary
+			if (rotation != SDL_ROTATE_NONE)
+				wParam = rotateKey(wParam, rotation);	
+#endif
 
 			/* Ignore repeated keys */
 			if ( lParam&REPEATED_KEYMASK ) {
@@ -100,34 +162,44 @@ LONG
 						wParam = VK_LMENU;
 					break;
 			}
-#ifdef NO_GETKEYBOARDSTATE
-			/* this is the workaround for the missing ToAscii() and ToUnicode() in CE (not necessary at KEYUP!) */
-			if ( SDL_TranslateUNICODE ) {
-				MSG m;
-
-				m.hwnd = hwnd;
-				m.message = msg;
-				m.wParam = wParam;
-				m.lParam = lParam;
-				m.time = 0;
-				if ( TranslateMessage(&m) && PeekMessage(&m, hwnd, 0, WM_USER, PM_NOREMOVE) && (m.message == WM_CHAR) ) {
-					GetMessage(&m, hwnd, 0, WM_USER);
-			    		wParam = m.wParam;
-				} else {
-					wParam = 0;
-				}
-			} else {
-				wParam = 0;
-			}
-#endif /* NO_GETKEYBOARDSTATE */
-			posted = SDL_PrivateKeyboard(SDL_PRESSED,
-				TranslateKey(wParam,HIWORD(lParam),&keysym,1));
+#ifdef _WIN32_WCE
+			TranslateKey(wParam,HIWORD(lParam),&keysym,1);
+			if (keysym.sym != SDLK_UNKNOWN)					// drop keys w/ 0 keycode
+				posted = SDL_PrivateKeyboard(SDL_PRESSED, &keysym);
+#ifdef WMMSG_DEBUG
+			else
+				debugLog("SDL: DROPPING SDLK_UNKNOWN DOWN");
+#endif
+#else
+			posted = SDL_PrivateKeyboard(SDL_PRESSED,TranslateKey(wParam,HIWORD(lParam),&keysym,1));
+#endif
 		}
 		return(0);
 
-		case WM_SYSKEYUP:
+		//case WM_SYSKEYUP:
 		case WM_KEYUP: {
 			SDL_keysym keysym;
+
+#ifdef _WIN32_WCE
+			// Drop spurious keystrokes
+			if ( 	wParam == VK_F20 ||					// VK_ROCKER with arrow keys
+				wParam == VK_F21 ||					// VK_DPAD with arrow keys
+				wParam == VK_F23					// VK_ACTION with dpad enter
+			   )
+				return 0;
+
+			if (dropnextvklwinup && wParam == VK_LWIN) {			// drop VK_LWIN messages if they're part of a chord
+#ifdef WMMSG_DEBUG
+				debugLog("SDL: DROPPING chorded VK_LWIN UP");
+#endif
+				dropnextvklwinup = 0;
+				return 0;
+			}
+
+			// Rotate key if necessary
+			if (rotation != SDL_ROTATE_NONE)
+				wParam = rotateKey(wParam, rotation);
+#endif
 
 			switch (wParam) {
 				case VK_CONTROL:
@@ -155,8 +227,17 @@ LONG
 						wParam = VK_LMENU;
 					break;
 			}
-			posted = SDL_PrivateKeyboard(SDL_RELEASED,
-				TranslateKey(wParam,HIWORD(lParam),&keysym,0));
+#ifdef _WIN32_WCE
+			TranslateKey(wParam,HIWORD(lParam),&keysym,0);
+			if (keysym.sym != SDLK_UNKNOWN)					// drop keys w/ 0 keycode
+				posted = SDL_PrivateKeyboard(SDL_RELEASED, &keysym);
+#ifdef WMMSG_DEBUG
+			else
+				debugLog("SDL: DROPPING SDLK_UNKNOWN UP");
+#endif
+#else
+			posted = SDL_PrivateKeyboard(SDL_RELEASED,TranslateKey(wParam,HIWORD(lParam),&keysym,0));
+#endif
 		}
 		return(0);
 
@@ -242,6 +323,7 @@ void DIB_InitOSKeymap(_THIS)
 	VK_keymap[VK_RBRACKET] = SDLK_RIGHTBRACKET;
 	VK_keymap[VK_GRAVE] = SDLK_BACKQUOTE;
 	VK_keymap[VK_BACKTICK] = SDLK_BACKQUOTE;
+#ifndef _WIN32_WCE
 	VK_keymap[VK_A] = SDLK_a;
 	VK_keymap[VK_B] = SDLK_b;
 	VK_keymap[VK_C] = SDLK_c;
@@ -268,6 +350,34 @@ void DIB_InitOSKeymap(_THIS)
 	VK_keymap[VK_X] = SDLK_x;
 	VK_keymap[VK_Y] = SDLK_y;
 	VK_keymap[VK_Z] = SDLK_z;
+#else
+	VK_keymap['A'] = SDLK_a;
+	VK_keymap['B'] = SDLK_b;
+	VK_keymap['C'] = SDLK_c;
+	VK_keymap['D'] = SDLK_d;
+	VK_keymap['E'] = SDLK_e;
+	VK_keymap['F'] = SDLK_f;
+	VK_keymap['G'] = SDLK_g;
+	VK_keymap['H'] = SDLK_h;
+	VK_keymap['I'] = SDLK_i;
+	VK_keymap['J'] = SDLK_j;
+	VK_keymap['K'] = SDLK_k;
+	VK_keymap['L'] = SDLK_l;
+	VK_keymap['M'] = SDLK_m;
+	VK_keymap['N'] = SDLK_n;
+	VK_keymap['O'] = SDLK_o;
+	VK_keymap['P'] = SDLK_p;
+	VK_keymap['Q'] = SDLK_q;
+	VK_keymap['R'] = SDLK_r;
+	VK_keymap['S'] = SDLK_s;
+	VK_keymap['T'] = SDLK_t;
+	VK_keymap['U'] = SDLK_u;
+	VK_keymap['V'] = SDLK_v;
+	VK_keymap['W'] = SDLK_w;
+	VK_keymap['X'] = SDLK_x;
+	VK_keymap['Y'] = SDLK_y;
+	VK_keymap['Z'] = SDLK_z;
+#endif
 	VK_keymap[VK_DELETE] = SDLK_DELETE;
 
 	VK_keymap[VK_NUMPAD0] = SDLK_KP0;
@@ -311,6 +421,15 @@ void DIB_InitOSKeymap(_THIS)
 	VK_keymap[VK_F13] = SDLK_F13;
 	VK_keymap[VK_F14] = SDLK_F14;
 	VK_keymap[VK_F15] = SDLK_F15;
+	VK_keymap[VK_F16] = SDLK_F16;
+	VK_keymap[VK_F17] = SDLK_F17;
+	VK_keymap[VK_F18] = SDLK_F18;
+	VK_keymap[VK_F19] = SDLK_F19;
+	VK_keymap[VK_F20] = SDLK_F20;
+	VK_keymap[VK_F21] = SDLK_F21;
+	VK_keymap[VK_F22] = SDLK_F22;
+	VK_keymap[VK_F23] = SDLK_F23;
+	VK_keymap[VK_F24] = SDLK_F24;
 
 	VK_keymap[VK_NUMLOCK] = SDLK_NUMLOCK;
 	VK_keymap[VK_CAPITAL] = SDLK_CAPSLOCK;
@@ -334,6 +453,15 @@ void DIB_InitOSKeymap(_THIS)
 
 	prev_shiftstates[0] = FALSE;
 	prev_shiftstates[1] = FALSE;
+
+#ifdef _WIN32_WCE
+	VK_keymap[0xC1] = SDLK_APP1;
+	VK_keymap[0xC2] = SDLK_APP2;
+	VK_keymap[0xC3] = SDLK_APP3;
+	VK_keymap[0xC4] = SDLK_APP4;
+	VK_keymap[0xC5] = SDLK_APP5;
+	VK_keymap[0xC6] = SDLK_APP6;
+#endif
 }
 
 static SDL_keysym *TranslateKey(UINT vkey, UINT scancode, SDL_keysym *keysym, int pressed)
@@ -365,8 +493,15 @@ int DIB_CreateWindow(_THIS)
 #ifndef CS_BYTEALIGNCLIENT
 #define CS_BYTEALIGNCLIENT	0
 #endif
+#ifndef _WIN32_WCE
 	SDL_RegisterApp("SDL_app", CS_BYTEALIGNCLIENT, 0);
+#else
+	//SDL_RegisterApp("SDL_app", CS_BYTEALIGNCLIENT | CS_HREDRAW | CS_VREDRAW, 0);
+	SDL_RegisterApp("SDL_app", CS_HREDRAW | CS_VREDRAW, 0);
+#endif
 	if ( SDL_windowid ) {
+// FIXME 
+#ifndef _WIN32_WCE
 		SDL_Window = (HWND)strtol(SDL_windowid, NULL, 0);
 
       /* DJM: we want all event's for the user specified
@@ -376,16 +511,29 @@ int DIB_CreateWindow(_THIS)
          userWindowProc = (WNDPROC)GetWindowLong(SDL_Window, GWL_WNDPROC);
          SetWindowLong(SDL_Window, GWL_WNDPROC, (LONG)WinMessage);
       }
+#endif
 	} else {
+				
+#ifndef _WIN32_WCE
 		SDL_Window = CreateWindow(SDL_Appname, SDL_Appname,
                         (WS_OVERLAPPED|WS_CAPTION|WS_SYSMENU|WS_MINIMIZEBOX),
                         CW_USEDEFAULT, CW_USEDEFAULT, 0, 0, NULL, NULL, SDL_Instance, NULL);
+#else		
+		SDL_Window = CreateWindow(SDL_Appname, SDL_Appname, WS_VISIBLE | WS_POPUP,
+						0, 0, GetSystemMetrics(SM_CXSCREEN), GetSystemMetrics(SM_CYSCREEN), 
+						NULL, NULL, SDL_Instance, NULL);
+		SetWindowPos(SDL_Window, HWND_TOP, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE);
+
+#endif	
 		if ( SDL_Window == NULL ) {
 			SDL_SetError("Couldn't create window");
 			return(-1);
 		}
-		ShowWindow(SDL_Window, SW_HIDE);
+#ifndef _WIN32_WCE
+		ShowWindow(SDL_Window, SW_HIDE);		
+#endif
 	}
+
 	return(0);
 }
 

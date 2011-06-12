@@ -453,7 +453,7 @@ int SDL_OpenAudio(SDL_AudioSpec *desired, SDL_AudioSpec *obtained)
 	}
 
 	/* Allocate a fake audio memory buffer */
-	audio->fake_stream = SDL_AllocAudioMem(audio->spec.size);
+	audio->fake_stream = (Uint8 *) SDL_AllocAudioMem(audio->spec.size);
 	if ( audio->fake_stream == NULL ) {
 		SDL_CloseAudio();
 		SDL_OutOfMemory();

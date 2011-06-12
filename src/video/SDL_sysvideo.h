@@ -362,6 +362,9 @@ extern VideoBootStrap AALIB_bootstrap;
 #ifdef ENABLE_WINDIB
 extern VideoBootStrap WINDIB_bootstrap;
 #endif
+#ifdef ENABLE_WINGAPI
+extern VideoBootStrap WINGAPI_bootstrap;
+#endif
 #ifdef ENABLE_DIRECTX
 extern VideoBootStrap DIRECTX_bootstrap;
 #endif

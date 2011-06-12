@@ -81,8 +81,25 @@ static void Blit1to1(SDL_BlitInfo *info)
 #define HI	0
 #define LO	1
 #endif
+
+#if defined(ARM)
+void Blit1to2ARM(Uint8 *src, int srcskip,
+                 Uint8 *dst, int dstskip,
+                 int width, int height,
+                 Uint16 *map);
+#endif
+
 static void Blit1to2(SDL_BlitInfo *info)
 {
+#if defined(ARM)
+	Blit1to2ARM(info->s_pixels,
+		    info->s_skip,
+		    info->d_pixels,
+		    info->d_skip,
+		    info->d_width,
+		    info->d_height,
+		    (Uint16 *)info->table);
+#else
 #ifndef USE_DUFFS_LOOP
 	int c;
 #endif
@@ -189,6 +206,7 @@ static void Blit1to2(SDL_BlitInfo *info)
 		}
 	}
 #endif /* USE_DUFFS_LOOP */
+#endif /* ARM */
 }
 static void Blit1to3(SDL_BlitInfo *info)
 {

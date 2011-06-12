@@ -102,6 +102,28 @@ static char rcsid =
 #include "SDL_memops.h"
 #include "SDL_RLEaccel_c.h"
 
+#if defined(_WIN32_WCE) && (_WIN32_WCE < 300) && defined(ARM)
+
+/* Crashes the compiler otherwise !!! */
+
+int SDL_RLESurface(SDL_Surface *surface) {
+	return -1;
+}
+
+int SDL_RLEBlit(SDL_Surface *src, SDL_Rect *srcrect, SDL_Surface *dst, SDL_Rect *dstrect) {
+	return -1;
+}
+
+int SDL_RLEAlphaBlit(SDL_Surface *src, SDL_Rect *srcrect, SDL_Surface *dst, SDL_Rect *dstrect) {
+	return -1;
+}
+
+void SDL_UnRLESurface(SDL_Surface *surface, int recode) {
+}
+
+#else
+
+
 #if defined(i386) && defined(__GNUC__) && defined(USE_ASMBLIT)
 #include "mmx.h"
 #include "SDL_cpuinfo.h"
@@ -1931,4 +1953,4 @@ void SDL_UnRLESurface(SDL_Surface *surface, int recode)
     }
 }
 
-
+#endif // HPC workaround
