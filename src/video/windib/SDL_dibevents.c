@@ -106,6 +106,33 @@ LONG
 	static int dropnextvklwinup = 0;
 
 	switch (msg) {
+#ifdef _WIN32_WCE
+		// This is necessary because of buggy keybaord driver implementations
+		// like on the HTC Touch Pro (Raphael)
+		case WM_CHAR: {
+			SDL_keysym keysym;
+
+			/* Set the keysym information */
+			keysym.scancode = (unsigned char) wParam;
+			keysym.sym = (UINT) wParam;
+			keysym.mod = KMOD_NONE;
+			keysym.unicode = 0;
+			if (SDL_TranslateUNICODE) { /* Someday use ToUnicode() */
+				/* Uh oh, better hope the vkey is close enough.. */
+				keysym.unicode = (UINT) wParam;
+			}
+
+			if (keysym.sym != SDLK_UNKNOWN)	{				// drop keys w/ 0 keycode
+				posted = SDL_PrivateKeyboard(SDL_PRESSED, &keysym);
+				posted = SDL_PrivateKeyboard(SDL_RELEASED, &keysym);
+#ifdef WMMSG_DEBUG
+			} else {
+				debugLog("NSDL: DROPPING SDLK_UNKNOWN DOWN");
+#endif
+			}
+		}
+		return(0);
+#endif
 		//case WM_SYSKEYDOWN:
 		case WM_KEYDOWN: {
 			SDL_keysym keysym;
@@ -300,6 +327,11 @@ void DIB_PumpEvents(_THIS)
 
 	while ( PeekMessage(&msg, NULL, 0, 0, PM_NOREMOVE) ) {
 		if ( GetMessage(&msg, NULL, 0, 0) > 0 ) {
+#ifdef _WIN32_WCE
+			// Needed because of buggy hardware keyboard drivers implementation
+			// on devices like HTC Touch Pro (Raphael)
+			TranslateMessage(&msg);
+#endif
 			DispatchMessage(&msg);
 		}
 	}
