@@ -21,6 +21,20 @@
 */
 #include "SDL_config.h"
 
+#ifdef SAVE_RCSID
+static char rcsid =
+ "@(#) $Id$";
+#endif
+
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+
+#ifdef UNDER_CE
+#include <windows.h>
+#endif
+
+#include "SDL_error.h"
 #include "SDL_video.h"
 #include "SDL_sysvideo.h"
 #include "SDL_cursor_c.h"
@@ -29,6 +43,32 @@
 #include "SDL_pixels_c.h"
 #include "SDL_leaks.h"
 
+#ifdef UNDER_CE
+static void * ce_virt_malloc (int size)
+{
+	if ( size < 64*1024 ) {
+		void *Ptr = SDL_malloc(size+4);
+		*((HANDLE*)Ptr) = 0;
+		return 4+(char*)Ptr;
+	}
+	HANDLE H = CreateFileMapping((HANDLE)INVALID_HANDLE_VALUE, 0, PAGE_READWRITE, 0, size+4, 0);
+	void *Ptr = MapViewOfFile(H, FILE_MAP_ALL_ACCESS, 0, 0, 0);
+	//fprintf(stderr,"%d\n", Ptr);	
+	*((HANDLE*)Ptr) = H;
+	return 4+(char*)Ptr;
+}
+
+static void ce_virt_free (void* addr)
+{
+	HANDLE H = *(HANDLE*)((char *)addr-4);
+	if ( H == 0 ) {
+		SDL_free((char*)addr-4);
+		return;
+	}
+	UnmapViewOfFile((char *)addr-4);
+	CloseHandle(H);
+}
+#endif
 
 /* Public routines */
 /*
@@ -123,7 +163,11 @@ SDL_Surface * SDL_CreateRGBSurface (Uint32 flags,
 	if ( ((flags&SDL_HWSURFACE) == SDL_SWSURFACE) || 
 				(video->AllocHWSurface(this, surface) < 0) ) {
 		if ( surface->w && surface->h ) {
+#ifndef UNDER_CE
 			surface->pixels = SDL_malloc(surface->h*surface->pitch);
+#else
+			surface->pixels = ce_virt_malloc(surface->h*surface->pitch);
+#endif
 			if ( surface->pixels == NULL ) {
 				SDL_FreeSurface(surface);
 				SDL_OutOfMemory();
@@ -932,7 +976,11 @@ void SDL_FreeSurface (SDL_Surface *surface)
 	}
 	if ( surface->pixels &&
 	     ((surface->flags & SDL_PREALLOC) != SDL_PREALLOC) ) {
+#ifndef UNDER_CE
 		SDL_free(surface->pixels);
+#else
+		ce_virt_free(surface->pixels);
+#endif
 	}
 	SDL_free(surface);
 #ifdef CHECK_LEAKS
