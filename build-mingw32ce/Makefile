@@ -1,9 +1,11 @@
-CC = arm-wince-mingw32ce-gcc
-AS = arm-wince-mingw32ce-as
-AR = arm-wince-mingw32ce-ar cru
-RANLIB = arm-wince-mingw32ce-ranlib
+CC = arm-mingw32ce-gcc
+AS = arm-mingw32ce-as
+AR = arm-mingw32ce-ar cru
+RANLIB = arm-mingw32ce-ranlib
 
-CFLAGS = -Iinclude -Isrc/audio -Isrc/cdrom -Isrc/timer -Isrc/joystick -Isrc/events -Isrc/video -Isrc/thread -Isrc/thread/win32 -Isrc -Isrc/video/wincommon -Isrc/video/windib -UWM_GETMINMAXINFO -UWS_MAXIMIZE
+VPATH = ../
+
+CFLAGS = -I../include -I../src/audio -I../src/cdrom -I../src/timer -I../src/joystick -I../src/events -I../src/video -I../src/thread -I../src/thread/win32 -I../src -I../src/video/wincommon -I../src/video/windib -UWM_GETMINMAXINFO -UWS_MAXIMIZE
 CFLAGS += -D_WIN32_WCE=300 -D_ARM_ -D__ARM__ -DUNICODE -D_UNICODE -DNO_SIGNAL_H -DENABLE_WINDIB -DENABLE_WINGAPI -D_FORCE_CE_SEMAPHORE -DWIN32 -DGCC_BUILD -D__stdcall__= -DNO_STDIO_REDIRECT
 CFLAGS += -DWINCE_EXTRADEBUG
 #CFLAGS += -DWMMSG_DEBUG
@@ -20,7 +22,13 @@ OBJS += src/video/windib/SDL_dibvideo.o src/video/wincommon/SDL_sysevents.o src/
 OBJS += src/video/wingapi/SDL_gapivideo.o src/video/wingapi/ARM_rot.o src/video/SDL_blit.o src/video/SDL_blit_0.o src/video/SDL_blit_1.o src/video/SDL_blit_A.o 
 OBJS += src/video/ARM_blit1to2.o src/video/SDL_blit_N.o src/video/SDL_bmp.o src/video/SDL_cursor.o src/video/SDL_gamma.o src/video/SDL_pixels.o src/video/SDL_RLEaccel.o
 OBJS += src/video/SDL_stretch.o src/video/SDL_surface.o src/video/SDL_video.o src/video/SDL_yuv.o src/video/SDL_yuv_mmx.o src/video/SDL_yuv_sw.o
-OBJS += src/main/win32/SDL_main.o src/SDL.o src/SDL_error.o src/SDL_fatal.o src/SDL_getenv.o src/SDL_loadso.o 
+OBJS += src/main/win32/SDL_win32_main.o src/SDL.o src/SDL_error.o src/SDL_fatal.o src/SDL_getenv.o src/SDL_loadso.o
+
+create-output-directories :=					\
+	$(shell for f in $(OBJS);				\
+		do						\
+			test -d $$f || mkdir -p `dirname $$f`;	\
+		done)
 
 all : libSDL.lib
 
@@ -33,3 +41,4 @@ libSDL.lib : $(OBJS)
 
 clean : 
 	rm `find . -name *.o`
+
