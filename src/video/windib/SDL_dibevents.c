@@ -44,6 +44,7 @@
 /* The translation table from a Microsoft VK keysym to a SDL keysym */
 static SDLKey VK_keymap[SDLK_LAST];
 static SDL_keysym *TranslateKey(WPARAM vkey, UINT scancode, SDL_keysym *keysym, int pressed);
+static BOOL prev_shiftstates[2];
 
 /* Masks for processing the windows KEYDOWN and KEYUP messages */
 #define REPEATED_KEYMASK	(1<<30)
@@ -61,36 +62,24 @@ static WNDPROCTYPE userWindowProc = NULL;
 
 #ifdef _WIN32_WCE
 
-WPARAM rotateKey(WPARAM key,SDL_ScreenOrientation direction) 
-{
-	if (direction != SDL_ORIENTATION_LEFT)
-		return key;
-
-	switch (key) {
-		case 0x26: /* up */
-			return 0x27;
-		case 0x27: /* right */
-			return 0x28;
-		case 0x28: /* down */
-			return 0x25;
-		case 0x25: /* left */
-			return 0x26;
-	}
-
-	return key;
-}
-
-#endif 
-
-
-#ifdef _WIN32_WCE
-
-WPARAM rotateKey(WPARAM key, SDL_RotateAttr direction) {
+WPARAM rotateKey(WPARAM key, SDL_ScreenOrientation direction) {
 	switch (direction) {
-		case SDL_ROTATE_NONE:
+		case SDL_ORIENTATION_UP:
 			return key;
 
-		case SDL_ROTATE_LEFT:
+		case SDL_ORIENTATION_DOWN:
+			switch (key) {
+				case VK_UP:
+					return VK_DOWN;
+				case VK_RIGHT:
+					return VK_LEFT;
+				case VK_DOWN:
+					return VK_UP;
+				case VK_LEFT:
+					return VK_RIGHT;
+			}
+
+		case SDL_ORIENTATION_LEFT:
 			switch (key) {
 				case VK_UP:
 					return VK_RIGHT;
@@ -102,7 +91,7 @@ WPARAM rotateKey(WPARAM key, SDL_RotateAttr direction) {
 					return VK_UP;
 			}
 
-		case SDL_ROTATE_RIGHT:
+		case SDL_ORIENTATION_RIGHT:
 			switch (key) {
 				case VK_UP:
 					return VK_LEFT;

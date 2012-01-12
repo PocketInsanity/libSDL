@@ -832,7 +832,7 @@ SDL_Surface *DIB_SetVideoMode(_THIS, SDL_Surface *current,
 		/* See if we need to rotate the buffer (WinCE specific) */
 		screenWidth = GetDeviceCaps(hdc, HORZRES);
 		screenHeight = GetDeviceCaps(hdc, VERTRES);
-		rotation = SDL_ROTATE_NONE;
+		this->hidden->orientation = SDL_ORIENTATION_UP;
 		work_pixels = NULL;
 		if (rotation_pixels) {
 			free(rotation_pixels);
@@ -844,16 +844,16 @@ SDL_Surface *DIB_SetVideoMode(_THIS, SDL_Surface *current,
 			video->pixels = malloc(video->h * video->pitch);
 			rotation_pixels = video->pixels;
 			if (video->pixels)
-				rotation = SDL_ROTATE_LEFT;
+				this->hidden->orientation = SDL_ORIENTATION_LEFT;
 			OutputDebugString(TEXT("will rotate\r\n"));
 		}
 
 		screen_bmp = CreateDIBSection(hdc, binfo, DIB_RGB_COLORS,
-			(rotation == SDL_ROTATE_NONE ? (void **)(&video->pixels) : (void**)&work_pixels), NULL, 0);
+			(this->hidden->orientation == SDL_ORIENTATION_UP ? (void **)(&video->pixels) : (void**)&work_pixels), NULL, 0);
 		ReleaseDC(SDL_Window, hdc);
 #if defined(UNDER_CE) 
 /* keep bitmapinfo for palette in 8-bit modes for devices that don't have SetDIBColorTable */
-		last_bits = (rotation == SDL_ROTATE_NONE ? (void **)(&video->pixels) : (void**)&work_pixels);
+		last_bits = (this->hidden->orientation == SDL_ORIENTATION_UP ? (void **)(&video->pixels) : (void**)&work_pixels);
 		if(last_bitmapinfo)
 			free(last_bitmapinfo);
 		if(is16bitmode)
@@ -911,7 +911,7 @@ SDL_Surface *DIB_SetVideoMode(_THIS, SDL_Surface *current,
 		bounds.right = SDL_windowX+video->w;
 		bounds.bottom = SDL_windowY+video->h;
 #ifdef UNDER_CE
-		if(rotation != SDL_ROTATE_NONE)
+		if(this->hidden->orientation != SDL_ORIENTATION_UP)
 		{   
 			int t=bounds.right;
 			bounds.right = bounds.bottom;
@@ -1217,7 +1217,7 @@ int DIB_SetColors(_THIS, int firstcolor, int ncolors, SDL_Color *colors)
 #if defined(UNDER_CE) 
 #if !defined(NO_SETDIBCOLORTABLE)
 /* BUG: For some reason SetDIBColorTable is not working when screen is not rotated */
-	if(rotation == SDL_ROTATE_NONE && last_bitmapinfo)
+	if(rotation == SDL_ORIENTATION_UP && last_bitmapinfo)
 #else
 	if(1)
 #endif
@@ -1247,6 +1247,7 @@ int DIB_SetColors(_THIS, int firstcolor, int ncolors, SDL_Color *colors)
 	}
 #endif
 	DeleteDC(mdc);
+#endif
 	ReleaseDC(SDL_Window, hdc);
 	return(1);
 }

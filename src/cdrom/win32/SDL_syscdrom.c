@@ -400,8 +400,6 @@ void SDL_SYS_CDQuit(void)
 	}
 }
 
-<<<<<<< HEAD
-#endif /* SDL_CDROM_WIN32 */
-=======
 #endif
->>>>>>> b84a788... Applied patch libsdl_20090809_diff from http://users.uoa.gr/~knakos/scummvm/libraries/
+
+#endif /* SDL_CDROM_WIN32 */

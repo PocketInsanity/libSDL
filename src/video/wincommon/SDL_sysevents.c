@@ -54,7 +54,6 @@
 #define NO_CHANGEDISPLAYSETTINGS
 #undef WM_MOUSELEAVE
 
-#define DM_DISPLAYORIENTATION 0x00800000L
 typedef struct _devicemode { 
   WCHAR dmDeviceName[CCHDEVICENAME]; 
   WORD dmSpecVersion; 
@@ -166,7 +165,8 @@ static void LoadAygshell(void)
 }
 
 /* for gapi landscape mode */
-static void GapiTransform(SDL_ScreenOrientation rotate, char hires, Sint16 *x, Sint16 *y) {
+//static void GapiTransform(SDL_ScreenOrientation rotate, char hires, Sint16 *x, Sint16 *y) {
+static void GapiTransform(SDL_RotateAttr rotate, char hires, Sint16 *x, Sint16 *y) {
 	Sint16 rotatedX;
 	Sint16 rotatedY;
 
@@ -239,7 +239,7 @@ void WIN_FlushMessageQueue()
 
 static void SDL_RestoreGameMode(void)
 {
-#ifdef _WIN32_WCE
+#ifdef _WIN32_WCE_NEWGAPI
 	SDL_VideoDevice *this = current_video;
 	if(SDL_strcmp(this->name, "gapi") == 0)
 	{
@@ -261,7 +261,7 @@ static void SDL_RestoreGameMode(void)
 static void SDL_RestoreDesktopMode(void)
 {
 
-#ifdef _WIN32_WCE
+#ifdef _WIN32_WCE_NEWGAPI
 	SDL_VideoDevice *this = current_video;
 	if(SDL_strcmp(this->name, "gapi") == 0)
 	{
@@ -494,11 +494,15 @@ void transform(SDL_RotateAttr rotate, char ozone, Sint16 *x, Sint16 *y) {
 
 	/* then, rotate sccording to surface */
 	switch(rotate) {
-		case SDL_ROTATE_NONE:
+		case SDL_ORIENTATION_UP:
 			*x -= padWidth;
 			*y -= padHeight;
 			break;
-		case SDL_ROTATE_LEFT:
+		case SDL_ORIENTATION_DOWN:
+			*x = padWidth;
+			*y = padHeight;
+			break;
+		case SDL_ORIENTATION_LEFT:
 			if (!SDL_VideoSurface)
 				break;
 			*x -= padHeight;
@@ -508,7 +512,7 @@ void transform(SDL_RotateAttr rotate, char ozone, Sint16 *x, Sint16 *y) {
 			*x = rotatedX;
 			*y = rotatedY;
 			break;
-		case SDL_ROTATE_RIGHT:
+		case SDL_ORIENTATION_RIGHT:
 			if (!SDL_VideoSurface)
 				break;
 			*x -= padHeight;
@@ -646,7 +650,8 @@ LRESULT CALLBACK WinMessage(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
 				} else {
 #ifdef _WIN32_WCE
 					if (SDL_VideoSurface)
-						GapiTransform(this->hidden->userOrientation, this->hidden->hiresFix, &x, &y);
+//						GapiTransform(this->hidden->userOrientation, this->hidden->hiresFix, &x, &y);
+						GapiTransform(rotation, ozoneHack, &x, &y);
 #endif
 					posted = SDL_PrivateMouseMotion(0, 0, x, y);
 				}
@@ -738,7 +743,8 @@ LRESULT CALLBACK WinMessage(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
 					y = (Sint16)HIWORD(lParam);
 #ifdef _WIN32_WCE
 					if (SDL_VideoSurface)
-						GapiTransform(this->hidden->userOrientation, this->hidden->hiresFix, &x, &y);
+//						GapiTransform(this->hidden->userOrientation, this->hidden->hiresFix, &x, &y);
+						GapiTransform(rotation, ozoneHack, &x, &y);
 #endif
 				}
 #ifdef _WIN32_WCE

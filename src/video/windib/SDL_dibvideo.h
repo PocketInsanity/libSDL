@@ -42,7 +42,6 @@ struct SDL_PrivateVideoData {
     HPALETTE screen_pal;
 	void *work_pixels; /* if the display needs to be rotated, memory allocated by the API */
 	void *rotation_pixels; /* if the display needs to be rotated, memory allocated by the code */
-	SDL_RotateAttr rotation;
 	char ozoneHack; /* force stylus translation if running without Hi Res flag */
 
 #define NUM_MODELISTS	4		/* 8, 16, 24, and 32 bits-per-pixel */

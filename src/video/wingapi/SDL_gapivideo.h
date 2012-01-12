@@ -85,9 +85,10 @@ struct GXKeyList {
 
 /* Rotation direction */
 typedef enum {
-	SDL_ROTATE_NONE,
-	SDL_ROTATE_LEFT,
-	SDL_ROTATE_RIGHT
+	SDL_ORIENTATION_UP,
+	SDL_ORIENTATION_DOWN,
+	SDL_ORIENTATION_LEFT,
+	SDL_ORIENTATION_RIGHT
 } SDL_RotateAttr;
 
 /* GAPI video mode */
